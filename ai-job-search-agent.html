@@ -59,7 +59,7 @@ dialog ul{padding-left:18px;margin:6px 0 14px}dialog li{margin-bottom:4px}
   <div class="box">
     <h3>Add a company board</h3>
     <input type="text" id="slug" placeholder="Company slug, e.g. monzo" aria-label="Company slug">
-    <select id="atsSel" aria-label="ATS"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="ashby">Ashby</option></select>
+    <select id="atsSel" aria-label="ATS"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="ashby">Ashby</option><option value="smartrecruiters">SmartRecruiters</option></select>
     <select id="indSel" aria-label="Industry group"></select>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="addBtn">Fetch live board</button><button class="btn ghost" id="reloadBtn">Re-run all</button><button class="btn ghost" id="clrBtn">Remove failed boards</button></div>
   </div>
@@ -104,24 +104,20 @@ const B=(ats,slug,name,ind,sp=1)=>({ats,slug,name,ind:I[ind],sponsor:!!sp});
 /* Slugs marked "test" in the chat are best guesses: a wrong one shows a red 404 badge. */
 let BOARDS=[
  B("greenhouse","stripe","Stripe","FI"),B("greenhouse","monzo","Monzo","FI"),B("greenhouse","gocardless","GoCardless","FI"),
- B("greenhouse","adyen","Adyen","FI"),B("greenhouse","wise","Wise","FI"),B("greenhouse","klarna","Klarna","FI"),
- B("greenhouse","mollie","Mollie","FI"),B("greenhouse","n26","N26","FI"),B("greenhouse","traderepublic","Trade Republic","FI"),
- B("greenhouse","bitpanda","Bitpanda","FI"),B("greenhouse","pleo","Pleo","FI",0),B("greenhouse","payhawk","Payhawk","FI",0),
- B("lever","bunq","bunq","FI"),B("lever","pennylane","Pennylane","FI",0),
- B("greenhouse","databricks","Databricks","TC"),B("greenhouse","anthropic","Anthropic","TC"),B("greenhouse","deepmind","Google DeepMind","TC"),
- B("greenhouse","airbnb","Airbnb","TC"),B("greenhouse","celonis","Celonis","TC"),B("greenhouse","personio","Personio","TC"),
- B("greenhouse","typeform","Typeform","TC",0),B("lever","spotify","Spotify","TC"),B("lever","palantir","Palantir","TC"),
- B("lever","mistral","Mistral AI","TC"),B("ashby","lovable","Lovable","TC",0),B("ashby","openai","OpenAI","TC"),B("ashby","elevenlabs","ElevenLabs","TC"),
- B("lever","useinsider","Insider (Istanbul)","TC",0),B("lever","dreamgames","Dream Games (Istanbul)","TC",0),
- B("lever","octopusenergy","Octopus Energy","EN"),B("greenhouse","enpal","Enpal","EN"),B("lever","1komma5grad","1Komma5°","EN",0),
- B("greenhouse","plana","Plan A","EN",0),B("lever","sweep","Sweep","EN",0),B("greenhouse","southpole","South Pole","SC",0),
- B("greenhouse","bolt","Bolt","EM"),B("greenhouse","glovo","Glovo","EM"),B("greenhouse","deliveroo","Deliveroo","EM"),B("greenhouse","vinted","Vinted","EM"),
- B("greenhouse","einride","Einride","IA",0),B("lever","wayve","Wayve","IA")
+ B("greenhouse","adyen","Adyen","FI"),B("greenhouse","wise","Wise","FI"),B("greenhouse","n26","N26","FI"),
+ B("greenhouse","traderepublic","Trade Republic","FI"),B("greenhouse","bitpanda","Bitpanda","FI"),
+ B("greenhouse","databricks","Databricks","TC"),B("greenhouse","anthropic","Anthropic","TC"),B("greenhouse","airbnb","Airbnb","TC"),
+ B("greenhouse","celonis","Celonis","TC"),B("greenhouse","typeform","Typeform","TC",0),B("lever","spotify","Spotify","TC"),
+ B("lever","palantir","Palantir","TC"),B("lever","mistral","Mistral AI","TC"),B("ashby","lovable","Lovable","TC",0),
+ B("ashby","openai","OpenAI","TC"),B("ashby","elevenlabs","ElevenLabs","TC"),B("lever","dreamgames","Dream Games (Istanbul)","TC",0),
+ B("greenhouse","deliveroo","Deliveroo","EM"),
+ B("smartrecruiters","DeliveryHero","Delivery Hero","EM"),B("smartrecruiters","BoschGroup","Bosch","IA"),
+ B("smartrecruiters","IKEA","IKEA","TC"),B("smartrecruiters","Ubisoft2","Ubisoft","TC")
 ];
 const CUSTOM_KEY="mb_custom_boards";
 try{JSON.parse(localStorage.getItem(CUSTOM_KEY)||"[]").forEach(b=>{if(!BOARDS.some(x=>x.slug===b.slug&&x.ats===b.ats))BOARDS.push(b)})}catch(e){}
 function saveCustom(){try{localStorage.setItem(CUSTOM_KEY,JSON.stringify(BOARDS.filter(b=>b.custom)))}catch(e){}}
-const ATSN={greenhouse:"Greenhouse",lever:"Lever",ashby:"Ashby"};
+const ATSN={greenhouse:"Greenhouse",lever:"Lever",ashby:"Ashby",smartrecruiters:"SmartRecruiters"};
 /* ---------- Scoring engine ---------- */
 const T1=/chief of staff|corporate development|corp(orate)? dev|\bm&a\b|mergers|acquisitions|corporate strategy|strategy (&|and) (operations|ops|planning)|bizops|business operations|biz ops/i;
 const T2=/strategy|strategic (planning|initiatives|projects|programs|finance|operations)|transformation|sustainab|\besg\b|decarbon|climate|net.?zero|capital markets|treasury|investor relations|corporate finance|business planning|special projects/i;
@@ -156,12 +152,14 @@ function log(msg,cls=""){const d=document.createElement("div");d.innerHTML=`<spa
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 /* ---------- Live ATS fetch ---------- */
-const endpoint=b=>b.ats==="greenhouse"?`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(b.slug)}/jobs?content=true`:b.ats==="ashby"?`https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(b.slug)}`:`https://api.lever.co/v0/postings/${encodeURIComponent(b.slug)}?mode=json`;
+const endpoint=b=>b.ats==="greenhouse"?`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(b.slug)}/jobs?content=true`:b.ats==="smartrecruiters"?`https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(b.slug)}/postings?limit=100`:b.ats==="ashby"?`https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(b.slug)}`:`https://api.lever.co/v0/postings/${encodeURIComponent(b.slug)}?mode=json`;
 function normalise(b,raw){
  if(b.ats==="greenhouse")return{id:"gh"+raw.id,title:raw.title||"",loc:(raw.location&&raw.location.name)||"",url:raw.absolute_url,desc:stripHtml(raw.content),team:(raw.departments&&raw.departments[0]&&raw.departments[0].name)||""};
+ if(b.ats==="smartrecruiters"){const L=raw.location||{},C={gb:"United Kingdom",de:"Germany",se:"Sweden",es:"Spain",nl:"Netherlands"};return{id:"sr"+raw.id,title:raw.name||"",loc:[L.city,L.region,C[(L.country||"").toLowerCase()]||(L.country||"").toUpperCase()].filter(Boolean).join(", ")+(L.remote?" ; Remote":""),url:"https://jobs.smartrecruiters.com/"+encodeURIComponent(b.slug)+"/"+raw.id,desc:"",team:(raw.department&&raw.department.label)||""}}
  if(b.ats==="ashby")return{id:"ab"+raw.id,title:raw.title||"",loc:[raw.location].concat((raw.secondaryLocations||[]).map(x=>x.location)).filter(Boolean).join("; ")+(raw.isRemote?" ; Remote":""),url:raw.jobUrl,desc:raw.descriptionPlain||stripHtml(raw.descriptionHtml),team:raw.department||"",unlisted:raw.isListed===false};
  return{id:"lv"+raw.id,title:raw.text||"",loc:(raw.categories&&(raw.categories.allLocations||[raw.categories.location]).filter(Boolean).join("; "))||"",url:raw.hostedUrl,desc:raw.descriptionPlain||stripHtml(raw.description),team:(raw.categories&&raw.categories.team)||""}
 }
+async function srAll(b,first){let all=first.content||[],tot=first.totalFound||all.length;while(all.length<tot&&all.length<600){const r=await fetch(endpoint(b)+"&offset="+all.length);if(!r.ok)break;const d=await r.json();if(!d.content||!d.content.length)break;all=all.concat(d.content)}return all}
 async function loadBoard(b,tried){
  tried=tried||[b.ats];
  const url=endpoint(b),t0=performance.now();
@@ -169,9 +167,11 @@ async function loadBoard(b,tried){
  try{
   const r=await fetch(url,{headers:{Accept:"application/json"}});
   const ms=Math.round(performance.now()-t0);
-  if(r.status===404){const nx=["greenhouse","lever","ashby"].find(a=>!tried.includes(a));if(nx){log(`  ← HTTP 404 on ${ATSN[b.ats]} – retrying ${b.slug} on ${ATSN[nx]}`,"wa");b.ats=nx;return loadBoard(b,tried.concat(nx))}}
+  if(r.status===404){const nx=["greenhouse","lever","ashby","smartrecruiters"].find(a=>!tried.includes(a));if(nx){log(`  ← HTTP 404 on ${ATSN[b.ats]} – retrying ${b.slug} on ${ATSN[nx]}`,"wa");b.ats=nx;return loadBoard(b,tried.concat(nx))}}
   if(!r.ok){log(`  ← HTTP ${r.status} ${b.name} (${ms} ms) – check the slug`,"er");STATUS[b.slug]={state:"bad",code:r.status};renderStatus();return}
-  const data=await r.json(),list=b.ats==="lever"?data:data.jobs;
+  const data=await r.json();
+  if(b.ats==="smartrecruiters"&&!(data.totalFound>0)){log(`  ← ${b.name}: no postings found on SmartRecruiters (check the company identifier, it is case-sensitive)`,"er");STATUS[b.slug]={state:"bad",code:404};renderStatus();return}
+  const list=b.ats==="lever"?data:b.ats==="smartrecruiters"?await srAll(b,data):data.jobs;
   log(`  ← HTTP 200 ${b.name}: ${list.length} postings (${ms} ms)`,"ok");
   let geoKeep=0,geoDrop=0,roleDrop=0,kept=0;
   JOBS=JOBS.filter(j=>j.board!==b.slug);
@@ -181,6 +181,7 @@ async function loadBoard(b,tried){
    if(!n.geo.length){geoDrop++;continue}
    geoKeep++;
    if(TBAD.test(n.title)||!(T1.test(n.title)||T2.test(n.title))){roleDrop++;continue}
+   if(b.ats==="smartrecruiters"){try{const d=await(await fetch("https://api.smartrecruiters.com/v1/companies/"+encodeURIComponent(b.slug)+"/postings/"+raw.id)).json();n.desc=stripHtml(Object.values((d.jobAd&&d.jobAd.sections)||{}).map(x=>x.text||"").join(" "));if(d.postingUrl)n.url=d.postingUrl}catch(e){}}
    n.eemea=EEMEA.test(n.title+" "+n.loc+" "+n.desc);
    const sc=scoreJob(n);Object.assign(n,sc,{board:b.slug,company:b.name,ind:b.ind,sponsor:b.sponsor,ats:b.ats});
    JOBS.push(n);kept++;
