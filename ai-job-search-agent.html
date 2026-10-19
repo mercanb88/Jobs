@@ -59,7 +59,7 @@ dialog ul{padding-left:18px;margin:6px 0 14px}dialog li{margin-bottom:4px}
   <div class="box">
     <h3>Add a company board</h3>
     <input type="text" id="slug" placeholder="Company slug, e.g. monzo" aria-label="Company slug">
-    <select id="atsSel" aria-label="ATS"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option></select>
+    <select id="atsSel" aria-label="ATS"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="ashby">Ashby</option></select>
     <select id="indSel" aria-label="Industry group"></select>
     <div style="display:flex;gap:8px"><button class="btn" id="addBtn">Fetch live board</button><button class="btn ghost" id="reloadBtn">Re-run all</button></div>
   </div>
@@ -99,20 +99,33 @@ const GEO_RX={
  EU:/europe|emea|\beu\b|european/i};
 const VISA_REG={UK:"UK Skilled Worker",DE:"EU Blue Card (DE)",NL:"EU Blue Card / Kennismigrant (NL)",SE:"EU Blue Card (SE)",ES:"Spanish HQP / EU Blue Card",EU:"EU Blue Card"};
 /* Curated starting list – boards that fail simply log a non-200 status. */
+const I={TC:"Tech & Consumer",FI:"Fintech",EN:"Energy & Sustainability",IA:"Industrial & Auto",EM:"E-Commerce & Mobility",SC:"Strategy & ESG Consulting"};
+const B=(ats,slug,name,ind,sp=1)=>({ats,slug,name,ind:I[ind],sponsor:!!sp});
+/* Slugs marked "test" in the chat are best guesses: a wrong one shows a red 404 badge. */
 let BOARDS=[
- {slug:"monzo",ats:"greenhouse",name:"Monzo",ind:"Fintech",sponsor:true},
- {slug:"stripe",ats:"greenhouse",name:"Stripe",ind:"Fintech",sponsor:true},
- {slug:"gocardless",ats:"greenhouse",name:"GoCardless",ind:"Fintech",sponsor:true},
- {slug:"checkoutcom",ats:"greenhouse",name:"Checkout.com",ind:"Fintech",sponsor:true},
- {slug:"databricks",ats:"greenhouse",name:"Databricks",ind:"Tech & Consumer",sponsor:true},
- {slug:"spotify",ats:"lever",name:"Spotify",ind:"Tech & Consumer",sponsor:true},
- {slug:"palantir",ats:"lever",name:"Palantir",ind:"Tech & Consumer",sponsor:true},
- {slug:"voi",ats:"lever",name:"Voi Technology",ind:"E-Commerce & Mobility",sponsor:true}
+ B("greenhouse","stripe","Stripe","FI"),B("greenhouse","monzo","Monzo","FI"),B("greenhouse","gocardless","GoCardless","FI"),
+ B("greenhouse","adyen","Adyen","FI"),B("greenhouse","wise","Wise","FI"),B("greenhouse","klarna","Klarna","FI"),
+ B("greenhouse","mollie","Mollie","FI"),B("greenhouse","n26","N26","FI"),B("greenhouse","traderepublic","Trade Republic","FI"),
+ B("greenhouse","bitpanda","Bitpanda","FI"),B("greenhouse","pleo","Pleo","FI",0),B("greenhouse","payhawk","Payhawk","FI",0),
+ B("lever","bunq","bunq","FI"),B("lever","pennylane","Pennylane","FI",0),
+ B("greenhouse","databricks","Databricks","TC"),B("greenhouse","anthropic","Anthropic","TC"),B("greenhouse","deepmind","Google DeepMind","TC"),
+ B("greenhouse","airbnb","Airbnb","TC"),B("greenhouse","celonis","Celonis","TC"),B("greenhouse","personio","Personio","TC"),
+ B("greenhouse","typeform","Typeform","TC",0),B("lever","spotify","Spotify","TC"),B("lever","palantir","Palantir","TC"),
+ B("lever","mistral","Mistral AI","TC"),B("ashby","lovable","Lovable","TC",0),B("ashby","openai","OpenAI","TC"),B("ashby","elevenlabs","ElevenLabs","TC"),
+ B("lever","useinsider","Insider (Istanbul)","TC",0),B("lever","dreamgames","Dream Games (Istanbul)","TC",0),
+ B("lever","octopusenergy","Octopus Energy","EN"),B("greenhouse","enpal","Enpal","EN"),B("lever","1komma5grad","1Komma5°","EN",0),
+ B("greenhouse","plana","Plan A","EN",0),B("lever","sweep","Sweep","EN",0),B("greenhouse","southpole","South Pole","SC",0),
+ B("greenhouse","bolt","Bolt","EM"),B("greenhouse","glovo","Glovo","EM"),B("greenhouse","deliveroo","Deliveroo","EM"),B("greenhouse","vinted","Vinted","EM"),
+ B("greenhouse","einride","Einride","IA",0),B("lever","wayve","Wayve","IA")
 ];
+const CUSTOM_KEY="mb_custom_boards";
+try{JSON.parse(localStorage.getItem(CUSTOM_KEY)||"[]").forEach(b=>{if(!BOARDS.some(x=>x.slug===b.slug&&x.ats===b.ats))BOARDS.push(b)})}catch(e){}
+function saveCustom(){try{localStorage.setItem(CUSTOM_KEY,JSON.stringify(BOARDS.filter(b=>b.custom)))}catch(e){}}
+const ATSN={greenhouse:"Greenhouse",lever:"Lever",ashby:"Ashby"};
 /* ---------- Scoring engine ---------- */
 const T1=/chief of staff|corporate development|corp(orate)? dev|\bm&a\b|mergers|acquisitions|corporate strategy|strategy (&|and) (operations|ops|planning)|bizops|business operations|biz ops/i;
-const T2=/strateg|transformation|sustainab|\besg\b|decarbon|climate|net.?zero|capital markets|treasury|investor relations|corporate finance|business planning|special projects|partnerships|business development/i;
-const TBAD=/engineer|developer|designer|recruit|support specialist|account executive|sales development|counsel|paralegal|scientist/i;
+const T2=/strategy|strategic (planning|initiatives|projects|programs|finance|operations)|transformation|sustainab|\besg\b|decarbon|climate|net.?zero|capital markets|treasury|investor relations|corporate finance|business planning|special projects/i;
+const TBAD=/engineer|developer|designer|recruit|support|account (executive|manager|director)|sales|marketing|counsel|paralegal|scientist|solutions|pre-?sales|customer success|audit|analyst|intern|graduate|junior|coordinator|assistant|associate/i;
 const SENIOR=/director|head of|\bvp\b|vice president|principal|lead|senior|manager|chief/i;
 const EEMEA=/turk|türkiye|istanbul|eemea|\bcee\b|central (and|&) eastern|emerging market|middle east|\bmena\b|\bcis\b/i;
 const SIGNALS=[
@@ -143,9 +156,10 @@ function log(msg,cls=""){const d=document.createElement("div");d.innerHTML=`<spa
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 /* ---------- Live ATS fetch ---------- */
-const endpoint=b=>b.ats==="greenhouse"?`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(b.slug)}/jobs?content=true`:`https://api.lever.co/v0/postings/${encodeURIComponent(b.slug)}?mode=json`;
+const endpoint=b=>b.ats==="greenhouse"?`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(b.slug)}/jobs?content=true`:b.ats==="ashby"?`https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(b.slug)}`:`https://api.lever.co/v0/postings/${encodeURIComponent(b.slug)}?mode=json`;
 function normalise(b,raw){
  if(b.ats==="greenhouse")return{id:"gh"+raw.id,title:raw.title||"",loc:(raw.location&&raw.location.name)||"",url:raw.absolute_url,desc:stripHtml(raw.content),team:(raw.departments&&raw.departments[0]&&raw.departments[0].name)||""};
+ if(b.ats==="ashby")return{id:"ab"+raw.id,title:raw.title||"",loc:[raw.location].concat((raw.secondaryLocations||[]).map(x=>x.location)).filter(Boolean).join("; ")+(raw.isRemote?" ; Remote":""),url:raw.jobUrl,desc:raw.descriptionPlain||stripHtml(raw.descriptionHtml),team:raw.department||"",unlisted:raw.isListed===false};
  return{id:"lv"+raw.id,title:raw.text||"",loc:(raw.categories&&(raw.categories.allLocations||[raw.categories.location]).filter(Boolean).join("; "))||"",url:raw.hostedUrl,desc:raw.descriptionPlain||stripHtml(raw.description),team:(raw.categories&&raw.categories.team)||""}
 }
 async function loadBoard(b){
@@ -155,12 +169,12 @@ async function loadBoard(b){
   const r=await fetch(url,{headers:{Accept:"application/json"}});
   const ms=Math.round(performance.now()-t0);
   if(!r.ok){log(`  ← HTTP ${r.status} ${b.name} (${ms} ms) – check the slug`,"er");STATUS[b.slug]={state:"bad",code:r.status};renderStatus();return}
-  const data=await r.json(),list=b.ats==="greenhouse"?data.jobs:data;
+  const data=await r.json(),list=b.ats==="lever"?data:data.jobs;
   log(`  ← HTTP 200 ${b.name}: ${list.length} postings (${ms} ms)`,"ok");
   let geoKeep=0,geoDrop=0,roleDrop=0,kept=0;
   JOBS=JOBS.filter(j=>j.board!==b.slug);
   for(const raw of list){
-   const n=normalise(b,raw);
+   const n=normalise(b,raw);if(n.unlisted)continue;
    n.geo=geoOf(n.loc);
    if(!n.geo.length){geoDrop++;continue}
    geoKeep++;
@@ -211,12 +225,12 @@ function render(){
 function openJob(id){
  const j=JOBS.find(x=>x.id===id),v=visaInfo(j),d=$("dlg");
  d.innerHTML=`<h2>${esc(j.title)}</h2>
- <p style="color:var(--mu);margin:4px 0 10px">${esc(j.company)} · ${esc(j.loc)} · via ${j.ats==="greenhouse"?"Greenhouse":"Lever"}${j.team?" · "+esc(j.team):""}</p>
+ <p style="color:var(--mu);margin:4px 0 10px">${esc(j.company)} · ${esc(j.loc)} · via ${ATSN[j.ats]}${j.team?" · "+esc(j.team):""}</p>
  <span class="badge ac">Match ${j.score}%</span><span class="badge ${v.cls}">${v.label}</span>${v.regs.map(r=>`<span class="badge blue">${esc(r)}</span>`).join("")}${j.eemea?'<span class="badge ac">Turkey / EEMEA edge</span>':""}
  <h3 style="margin-top:12px">Why Mercan fits</h3><ul>${j.why.map(w=>`<li>${esc(w)}</li>`).join("")||"<li>Title-level match only; review the description.</li>"}</ul>
  <h3>Posting excerpt</h3><div class="desc">${esc(j.desc.slice(0,1800))}${j.desc.length>1800?"…":""}</div>
  <p style="color:var(--mu);font-size:12px">Sponsorship status is a curated indicator, not a live register lookup. Confirm on the <a class="link" target="_blank" rel="noopener" href="https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers">UK sponsor register</a> or the employer's careers page before applying.</p>
- <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" id="closeDlg">Close</button><a class="btn" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(j.url)}">Apply on ${j.ats==="greenhouse"?"Greenhouse":"Lever"}</a></div>`;
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" id="closeDlg">Close</button><a class="btn" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(j.url)}">Apply on ${ATSN[j.ats]}</a></div>`;
  d.showModal();$("closeDlg").onclick=()=>d.close();
 }
 $("grid").addEventListener("click",e=>{const c=e.target.closest(".card");if(c)openJob(c.dataset.id)});
@@ -226,7 +240,7 @@ $("addBtn").onclick=()=>{
  const slug=$("slug").value.trim().toLowerCase().replace(/[^a-z0-9_-]/g,"");
  if(!slug){log("Enter a company slug first (the token in the careers-page URL).","wa");return}
  let b=BOARDS.find(x=>x.slug===slug&&x.ats===$("atsSel").value);
- if(!b){b={slug,ats:$("atsSel").value,name:slug.charAt(0).toUpperCase()+slug.slice(1),ind:$("indSel").value,sponsor:false};BOARDS.push(b)}
+ if(!b){b={slug,ats:$("atsSel").value,name:slug.charAt(0).toUpperCase()+slug.slice(1),ind:$("indSel").value,sponsor:false,custom:true};BOARDS.push(b);saveCustom()}
  $("slug").value="";loadBoard(b);
 };
 $("slug").addEventListener("keydown",e=>{if(e.key==="Enter")$("addBtn").click()});
