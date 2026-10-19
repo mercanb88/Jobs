@@ -61,7 +61,7 @@ dialog ul{padding-left:18px;margin:6px 0 14px}dialog li{margin-bottom:4px}
     <input type="text" id="slug" placeholder="Company slug, e.g. monzo" aria-label="Company slug">
     <select id="atsSel" aria-label="ATS"><option value="greenhouse">Greenhouse</option><option value="lever">Lever</option><option value="ashby">Ashby</option></select>
     <select id="indSel" aria-label="Industry group"></select>
-    <div style="display:flex;gap:8px"><button class="btn" id="addBtn">Fetch live board</button><button class="btn ghost" id="reloadBtn">Re-run all</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="addBtn">Fetch live board</button><button class="btn ghost" id="reloadBtn">Re-run all</button><button class="btn ghost" id="clrBtn">Remove failed boards</button></div>
   </div>
   <div class="box"><h3>Industry group</h3><div id="fInd"></div></div>
   <div class="box"><h3>Geography</h3><div id="fGeo"></div></div>
@@ -125,7 +125,7 @@ const ATSN={greenhouse:"Greenhouse",lever:"Lever",ashby:"Ashby"};
 /* ---------- Scoring engine ---------- */
 const T1=/chief of staff|corporate development|corp(orate)? dev|\bm&a\b|mergers|acquisitions|corporate strategy|strategy (&|and) (operations|ops|planning)|bizops|business operations|biz ops/i;
 const T2=/strategy|strategic (planning|initiatives|projects|programs|finance|operations)|transformation|sustainab|\besg\b|decarbon|climate|net.?zero|capital markets|treasury|investor relations|corporate finance|business planning|special projects/i;
-const TBAD=/engineer|developer|designer|recruit|support|account (executive|manager|director)|sales|marketing|counsel|paralegal|scientist|solutions|pre-?sales|customer success|audit|analyst|intern|graduate|junior|coordinator|assistant|associate/i;
+const TBAD=/engineer|developer|designer|recruit|support|account (executive|manager|director)|sales|marketing|counsel|paralegal|scientist|solutions|pre-?sales|customer success|lead generation|demand gen|\bsdr\b|\bbdr\b|audit|analyst|intern|graduate|junior|coordinator|assistant|associate/i;
 const SENIOR=/director|head of|\bvp\b|vice president|principal|lead|senior|manager|chief/i;
 const EEMEA=/turk|türkiye|istanbul|eemea|\bcee\b|central (and|&) eastern|emerging market|middle east|\bmena\b|\bcis\b/i;
 const SIGNALS=[
@@ -162,12 +162,14 @@ function normalise(b,raw){
  if(b.ats==="ashby")return{id:"ab"+raw.id,title:raw.title||"",loc:[raw.location].concat((raw.secondaryLocations||[]).map(x=>x.location)).filter(Boolean).join("; ")+(raw.isRemote?" ; Remote":""),url:raw.jobUrl,desc:raw.descriptionPlain||stripHtml(raw.descriptionHtml),team:raw.department||"",unlisted:raw.isListed===false};
  return{id:"lv"+raw.id,title:raw.text||"",loc:(raw.categories&&(raw.categories.allLocations||[raw.categories.location]).filter(Boolean).join("; "))||"",url:raw.hostedUrl,desc:raw.descriptionPlain||stripHtml(raw.description),team:(raw.categories&&raw.categories.team)||""}
 }
-async function loadBoard(b){
+async function loadBoard(b,tried){
+ tried=tried||[b.ats];
  const url=endpoint(b),t0=performance.now();
  log(`GET ${url}`,"in");STATUS[b.slug]={state:"loading"};renderStatus();
  try{
   const r=await fetch(url,{headers:{Accept:"application/json"}});
   const ms=Math.round(performance.now()-t0);
+  if(r.status===404){const nx=["greenhouse","lever","ashby"].find(a=>!tried.includes(a));if(nx){log(`  ← HTTP 404 on ${ATSN[b.ats]} – retrying ${b.slug} on ${ATSN[nx]}`,"wa");b.ats=nx;return loadBoard(b,tried.concat(nx))}}
   if(!r.ok){log(`  ← HTTP ${r.status} ${b.name} (${ms} ms) – check the slug`,"er");STATUS[b.slug]={state:"bad",code:r.status};renderStatus();return}
   const data=await r.json(),list=b.ats==="lever"?data:data.jobs;
   log(`  ← HTTP 200 ${b.name}: ${list.length} postings (${ms} ms)`,"ok");
@@ -245,6 +247,7 @@ $("addBtn").onclick=()=>{
 };
 $("slug").addEventListener("keydown",e=>{if(e.key==="Enter")$("addBtn").click()});
 $("reloadBtn").onclick=()=>{JOBS=[];render();runAll()};
+$("clrBtn").onclick=()=>{const n=BOARDS.length;BOARDS=BOARDS.filter(b=>!(STATUS[b.slug]&&STATUS[b.slug].state==="bad"));saveCustom();log(`Removed ${n-BOARDS.length} failed boards.`,"wa");renderStatus()};
 buildFilters();renderStatus();render();runAll();
 </script>
 </body>
